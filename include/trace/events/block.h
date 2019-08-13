@@ -212,6 +212,57 @@ DEFINE_EVENT(block_rq, block_rq_issue,
 );
 
 /**
+ * block_rq_issue2 - issue pending block IO request operation to device driver,
+ *                   also noting information about included bios
+ *
+ * @q: queue holding operation
+ * @rq: block IO operation operation request
+ * @ts: task that caused this operation
+ *
+ * Called when block operation request @rq from queue @q is sent to a
+ * device driver for processing.
+ */
+TRACE_EVENT(block_rq_issue2,
+
+	TP_PROTO(struct request_queue *q, struct request *rq, 
+             struct task_struct *ts),
+
+	TP_ARGS(q, rq, ts),
+
+	TP_STRUCT__entry(
+		__field(  dev_t,	dev			)
+		__field(  sector_t,	sector			)
+		__field(  unsigned int,	nr_sector		)
+		__field(  unsigned int,	bytes			)
+		__array(  char,		rwbs,	RWBS_LEN	)
+		__array(  char,         comm,   TASK_COMM_LEN   )
+		__dynamic_array( char,	cmd,	1		)
+        __field( pid_t, rpid)
+        __field(void *, bptr)
+	),
+
+	TP_fast_assign(
+		__entry->dev	   = rq->rq_disk ? disk_devt(rq->rq_disk) : 0;
+		__entry->sector    = blk_rq_trace_sector(rq);
+		__entry->nr_sector = blk_rq_trace_nr_sectors(rq);
+		__entry->bytes     = blk_rq_bytes(rq);
+
+		blk_fill_rwbs(__entry->rwbs, rq->cmd_flags, blk_rq_bytes(rq));
+		__get_str(cmd)[0] = '\0';
+		memcpy(__entry->comm, current->comm, TASK_COMM_LEN);
+
+        __entry->rpid      = task_pid_nr(ts);
+        __entry->bptr      = rq->bio;
+	),
+
+	TP_printk("%d,%d %s %u (%s) %llu + %u [%s]i %d %p",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->rwbs, __entry->bytes, __get_str(cmd),
+		  (unsigned long long)__entry->sector,
+		  __entry->nr_sector, __entry->comm, __entry->rpid, __entry->bptr)
+);
+
+/**
  * block_bio_bounce - used bounce buffer when processing block operation
  * @q: queue holding the block operation
  * @bio: block operation
@@ -285,6 +336,51 @@ TRACE_EVENT(block_bio_complete,
 		  MAJOR(__entry->dev), MINOR(__entry->dev), __entry->rwbs,
 		  (unsigned long long)__entry->sector,
 		  __entry->nr_sector, __entry->error)
+);
+
+/**
+ * block_bio_complete2 - completed all work on the block operation, also listing
+ *                       pid of thread that signals the completion
+ * @q: queue holding the block operation
+ * @bio: block operation completed
+ * @error: io error value
+ * @ts: task struct of calling thread
+ *
+ * This tracepoint indicates there is no further work to do on this
+ * block IO operation @bio.
+ */
+TRACE_EVENT(block_bio_complete2,
+
+        TP_PROTO(struct request_queue *q, struct bio *bio, int error,
+                 struct task_struct *ts),
+
+        TP_ARGS(q, bio, error, ts),
+
+        TP_STRUCT__entry(
+                __field( dev_t,         dev             )
+                __field( sector_t,      sector          )
+                __field( unsigned,      nr_sector       )
+                __field( int,           error           )
+                __array( char,          rwbs,   RWBS_LEN)
+                __field(pid_t,          rpid            )
+                __field(void*,          bptr            )
+        ),
+
+        TP_fast_assign(
+                __entry->dev            = bio_dev(bio);
+                __entry->sector         = bio->bi_iter.bi_sector;
+                __entry->nr_sector      = bio_sectors(bio);
+                __entry->error          = error;
+                blk_fill_rwbs(__entry->rwbs, bio->bi_opf, bio->bi_iter.bi_size);
+                __entry->rpid           = task_pid_nr(ts);
+                __entry->bptr           = bio;
+        ),
+
+        TP_printk("%d,%d %s %llu + %u [%d] %d %p",
+                  MAJOR(__entry->dev), MINOR(__entry->dev), __entry->rwbs,
+                  (unsigned long long)__entry->sector,
+                  __entry->nr_sector, __entry->error, __entry->rpid,
+                  __entry->bptr)
 );
 
 DECLARE_EVENT_CLASS(block_bio_merge,
@@ -382,6 +478,47 @@ TRACE_EVENT(block_bio_queue,
 		  __entry->nr_sector, __entry->comm)
 );
 
+/**
+ * block_bio_queue2 - putting new block IO operation in queue, listing
+ *                    current process id and uniqueunique  bio pointer
+ * @q: queue holding operation
+ * @bio: new block operation
+ * @ts: task struct that caused queueing
+ *
+ * About to place the block IO operation @bio into @q.
+ */
+TRACE_EVENT(block_bio_queue2,
+
+    TP_PROTO(struct request_queue *q, struct bio *bio, struct task_struct *ts),
+
+    TP_ARGS(q, bio, ts),
+
+    TP_STRUCT__entry(
+        __field( dev_t,     dev         )                                       
+        __field( sector_t,  sector          )                                   
+        __field( unsigned int,  nr_sector       )                               
+        __array( char,      rwbs,   RWBS_LEN    )                               
+        __array( char,      comm,   TASK_COMM_LEN   )
+        __field( pid_t,     rpid        )   
+        __field( void*,     bptr        )                        
+    ),                   
+
+    TP_fast_assign(                                                             
+        __entry->dev        = bio_dev(bio);                                     
+        __entry->sector     = bio->bi_iter.bi_sector;                           
+        __entry->nr_sector  = bio_sectors(bio);                                 
+        blk_fill_rwbs(__entry->rwbs, bio->bi_opf, bio->bi_iter.bi_size);        
+        memcpy(__entry->comm, current->comm, TASK_COMM_LEN);
+        __entry->rpid       = task_pid_nr(ts);
+        __entry->bptr       = bio;                     
+    ),
+
+    TP_printk("%d,%d %s %llu + %u [%s] %d %p",                                        
+          MAJOR(__entry->dev), MINOR(__entry->dev), __entry->rwbs,              
+          (unsigned long long)__entry->sector,                                  
+          __entry->nr_sector, __entry->comm, __entry->rpid, __entry->bptr)
+);
+    
 DECLARE_EVENT_CLASS(block_get_rq,
 
 	TP_PROTO(struct request_queue *q, struct bio *bio, int rw),

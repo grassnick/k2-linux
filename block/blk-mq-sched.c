@@ -117,6 +117,8 @@ static void blk_mq_do_dispatch_sched(struct blk_mq_hw_ctx *hctx)
 		 * in blk_mq_dispatch_rq_list().
 		 */
 		list_add(&rq->queuelist, &rq_list);
+        /* 2018/09/26 insert tracepoint for request promotion */
+        trace_block_rq_issue2(q, rq, current);
 	} while (blk_mq_dispatch_rq_list(q, &rq_list, true));
 }
 
@@ -163,6 +165,9 @@ static void blk_mq_do_dispatch_ctx(struct blk_mq_hw_ctx *hctx)
 		 * in blk_mq_dispatch_rq_list().
 		 */
 		list_add(&rq->queuelist, &rq_list);
+
+        /* 20190520 insert trace point for request promotion */
+        trace_block_rq_issue2(q, rq, current);
 
 		/* round robin for fair dispatch */
 		ctx = blk_mq_next_ctx(hctx, rq->mq_ctx);
