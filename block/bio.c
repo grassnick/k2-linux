@@ -1471,6 +1471,7 @@ again:
 
 	if (bio->bi_bdev && bio_flagged(bio, BIO_TRACE_COMPLETION)) {
 		trace_block_bio_complete(bio->bi_bdev->bd_disk->queue, bio);
+		trace_block_bio_complete2(bio->bi_bdev->bd_disk->queue, bio, blk_status_to_errno(bio->bi_status), current);
 		bio_clear_flag(bio, BIO_TRACE_COMPLETION);
 	}
 

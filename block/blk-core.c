@@ -55,6 +55,7 @@ struct dentry *blk_debugfs_root;
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_remap);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_rq_remap);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_complete);
+EXPORT_TRACEPOINT_SYMBOL_GPL(block_bio_complete2);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_split);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_unplug);
 EXPORT_TRACEPOINT_SYMBOL_GPL(block_rq_insert);
@@ -897,6 +898,7 @@ static noinline_for_stack bool submit_bio_checks(struct bio *bio)
 
 	if (!bio_flagged(bio, BIO_TRACE_COMPLETION)) {
 		trace_block_bio_queue(bio);
+		trace_block_bio_queue2(q, bio, current);
 		/* Now that enqueuing has been traced, we need to trace
 		 * completion as well.
 		 */
@@ -1429,7 +1431,10 @@ bool blk_update_request(struct request *req, blk_status_t error,
 			req->bio = bio->bi_next;
 
 		/* Completion has already been traced */
-		bio_clear_flag(bio, BIO_TRACE_COMPLETION);
+		/* 20180714: comment out next line, otherwise, block_bio_complete
+		 * will never be traced!
+		*/
+		/* bio_clear_flag(bio, BIO_TRACE_COMPLETION); */
 		req_bio_endio(req, bio, bio_bytes, error);
 
 		total_bytes += bio_bytes;
